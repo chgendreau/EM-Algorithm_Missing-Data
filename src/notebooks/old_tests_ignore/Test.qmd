@@ -1,0 +1,179 @@
+---
+title: "**Title of the report**"
+subtitle: "*Subtitle of the report*"
+author:
+  - name: YOUR_NAME
+date: today
+abstract: | 
+  This is the abstract of the report.
+  It can span multiple lines.
+
+toc: true
+bibliography: biblio.bib
+---
+
+```{r}
+library(mvtnorm)
+library(Matrix)
+library(softImpute)
+library(mice)
+library(missForest)
+library(missMDA)
+library(ggplot2)
+library(dplyr)
+library(mltools)
+library(gdata )
+library(devtools)
+```
+
+
+```{r}
+# Set seed for reproducibility
+set.seed(8374829)
+
+# Generate synthetic data
+n <- 1000 # number of observations
+p <- 10 # number of variables
+
+# Generate a random mean vector
+mu <- runif(p, min = -1, max = 1)  # Uniformly distributed between -1 and 1
+# Or for normally distributed: mu <- rnorm(p)
+
+# Generate a random matrix
+A <- matrix(rnorm(p * p), nrow = p)
+
+# Create a symmetric covariance matrix
+Sigma <- A %*% t(A)
+
+# Generate the data
+data <- rmvnorm(n, mean = mu, sigma = Sigma)
+```
+
+```{r}
+source_url('https://raw.githubusercontent.com/R-miss-tastic/website/master/static/how-to/generate/amputation.R')
+```
+
+Link to the explanation of the functions https://rmisstastic.netlify.app/how-to/generate/misssimul
+
+```{r}
+# Function to introduce MCAR
+introduce_MCAR <- function(data, perc_missing){
+  return(array(as.numeric(unlist(produce_NA(data, mechanism="MCAR", perc.missing = perc_missing)$data.incomp)),dim(data))) 
+}
+
+data_mcar <- introduce_MCAR(data, 0.1) # 10% MCAR
+```
+
+```{r}
+# Function to introduce MAR
+introduce_MAR <- function(data, perc_missing){
+  return(array(as.numeric(unlist(produce_NA(data, mechanism="MAR", perc.missing = perc_missing, by.patterns= F)$data.incomp)),dim(data))) 
+}
+
+data_mar <- introduce_MAR(data, 0.1) # 10% MAR
+```
+
+```{r}
+# Function to introduce NMAR
+introduce_NMAR <- function(data, perc_missing){
+  return(array(as.numeric(unlist(produce_NA(data, mechanism="MNAR", perc.missing = perc_missing, by.patterns= F)$data.incomp)),dim(data)))
+}
+
+data_nmar <- introduce_NMAR(data, 0.1) # 10% NMAR
+```
+
+
+```{r}
+em_algorithm <- function(data, max_iter = 10000, tol = 1e-4) {
+    n <- nrow(data)
+    p <- ncol(data)
+
+    # Initial estimates
+    # For mean, use column means of available data
+    # For covariance, use covariance of available data
+    means <- apply(data, 2, function(column) mean(column, na.rm = TRUE))
+    covariance <- cov(data, use = "complete.obs")
+
+    for (iter in 1:max_iter) {
+        prev_means <- means
+
+        # E-step: Estimate missing values
+        for (i in 1:n) {
+            missing <- is.na(data[i,])
+            if (any(missing)) {
+                observed <- !missing
+                mu_obs <- means[observed]
+                mu_miss <- means[missing]
+                sigma_obs <- covariance[observed, observed]
+                sigma_miss <- covariance[missing, missing]
+                sigma_miss_obs <- covariance[missing, observed]
+
+                # Conditional expectation
+                data[i, missing] <- mu_miss + sigma_miss_obs %*% solve(sigma_obs, (data[i, observed] - mu_obs))
+            }
+        }
+
+        # M-step: Re-estimate parameters
+        means <- colMeans(data)
+        covariance <- cov(data)
+
+        # Check for convergence
+        if (max(abs(means - prev_means)) < tol) {
+            break
+        }
+    }
+
+    return(list(data = data, means = means, covariance = covariance))
+}
+```
+
+```{r}
+# Assuming 'data_mcar' is your dataset with missing values (MCAR)
+result <- em_algorithm(data_mcar)
+
+# Extract the imputed data
+imputed_data <- result$data
+```
+
+```{r}
+source_url('https://raw.githubusercontent.com/R-miss-tastic/website/master/static/how-to/impute/CrossValidation_softImpute.R')
+#use the function given in the url
+lambda_sft <- cv_sft(data_mcar)
+sft <- softImpute(x = data_mcar, lambda = lambda_sft, rank.max = 2, type ="svd")
+
+# compute the factorization
+imputed_softImpute <- sft$u %*% diag(sft$d) %*% t(sft$v)
+
+# replace missing values by computed values
+imputed_softImpute[which(!is.na(data_mcar))] <- data_mcar[which(!is.na(data_mcar))]
+
+head(imputed_softImpute)
+```
+
+```{r}
+#original_data is data with NaN
+calculate_MSE <- function(original_data, missing_data, imputed_data) {
+    # Assuming NAs are in the same positions in original and imputed data
+    missing_indices <- is.na(missing_data)
+    mse <- mean((original_data[missing_indices] - imputed_data[missing_indices])^2)
+    return(mse)
+}
+```
+
+```{r}
+#mse_em <- calculate_MSE(data, data_mcar, imputed_data)
+mse_softImpute <- calculate_MSE(data, data_mcar, imputed_softImpute)
+```
+
+```{r}
+mice_mice <- mice(data = data_mcar, m = 5, method = "pmm")
+IMP <- 0
+for (i in 1:5) { IMP <- IMP + mice::complete(mice_mice, i)}
+X.mice  <-  IMP/5  #5 is the default number of multiple imputations
+head(X.mice)
+```
+
+```{r}
+mse_mice <- calculate_MSE(data, data_mcar, X.mice)
+```
+

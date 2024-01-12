@@ -1,0 +1,323 @@
+---
+title: "Emil's report"
+format: html
+editor: visual
+execute:
+  echo: false
+  warning: false
+bibliography: biblio.bib
+---
+
+## The EM Algorithm
+
+In this section, we present the EM-algorithm in general [@10.1111/j.2517-6161.1977.tb01600.x], and then present the specifics of implementing the algorithm in the special case of a multivariate normal with missing data.
+
+### General setup
+
+Let's say we observe some data from a survey with lots of questions. This could be in a regression setup, for example where we use the answers from some questions to predict the answer of a question of interest ("Have you ever had a heart attack?", for example), but it could also be something else and we are just interested in estimating some parameters of the data. This could be the mean vector and covariance matrix. It's very common for participants not to be asked all the questions.
+
+Mathematically, the responses to the survey containing $p$ questions correspond to a random vector
+
+$$
+\overset{\to}{X}=\left(X_1,\dots,X_p\right)\sim F_{\overset{\to}{X}}
+$$
+
+with some distribution. Some of the $X_i$ are unknown, missing. This makes it harder to infer the parameters of interest of the data.
+
+We gather all the independent observations (in the survey example, one observation is a, potentially partially, filled out survey) in the rows of a $(N,p)$ dimensional data matrix $\mathbf{X}$ .
+
+Typically, without the presence of missing data, we model the data as coming from a parametric distribution with density $f(x|\theta)$ and estimate the parameters by maximizing the (log)likelihood. In the presence of missing data, we cannot calculate the complete loglikelihood $\ell_{\text{comp}}(\theta)$. We have to work with the likelihood of the observed data, which we denote (as a random variable) $X_{\text{obs}}$ ; this corresponds to all the entries of the data matrix which are not missing. We know the realization of this random variable is $x_{\text{obs}}$. The random variable $X_{\text{miss}}$ corresponds to the missing entries.
+
+Explicitly, the write the observed and complete loglikelihoods as below. 
+
+$$
+\ell_{\text{comp}}(\theta):=\log f(X_{\text{obs}},X_{\text{miss}}|\theta)
+$$
+
+$$
+\ell_{\text{obs}}(\theta):=\log f(X_{\text{miss}}|\theta,X_{\text{obs}}=x_{\text{obs}})
+$$
+
+Typically, the complete loglikelihood is very nice to optimize, but we cannot work with it because we don't know the missing data. The observed loglikelihood is not nice to optimize.
+
+The EM-algorithm is an iterative algorithm that allows us to optimize the observed loglikelihood. It does this by optimizing the expected complete loglikelihood $\mathbb{E_{\theta_0}}\left[\ell_{\text{comp}}(\theta)\right|X_{\text{obs}}]$ with respect to $\theta$. The expectation is taken with respect to the conditional distribution of the missing data given the observed data and an initial estimate $\theta_0$ of $\theta$.
+
+The EM algorithm is in two steps. First, choose an initial estimate $\theta_0$ of $\theta$. Then, iterate the following two steps until convergence:
+
+1.  E-step: Calculate $\mathbb{E}_{\theta_{l-1}}[\ell_{\text{comp}}(\theta)|X_{\text{obs}}]=:Q(\theta,\theta_{l-1})$
+2.  M-step: Find $\theta_l$ that maximizes $Q(\theta,\theta_{l-1})$.
+
+One can show that the sequence of thetas keeps augmenting $\ell_{\text{obs}}(\theta)$, which is good for optimization.
+
+### EM for a multivariate normal with missing data
+
+Now suppose the random vector 
+$$
+\overset{\to}{X}=\left(X_1,\dots,X_p\right)\sim N_p(\mu,\Sigma)
+$$ 
+
+is multivariate normal. The i-th row of the data matrix $\mathbf{X}$ is the realization $x^{(i)}$ of the random vector $\overset{\to}{X}^{(i)}$. We shall omit the arrow for simplicity of notation.
+
+
+Then we obtain 
+$$
+\ell_{\text{comp}}(\mu,\Sigma)=\sum_{n=1}^n\log f_{\overset{\to}{X}}(X^{(n)}|\mu,\Sigma)\equiv -N/2 \log(\det(\Sigma))+\frac{1}{2}\sum_{n=1}^N (x^{(n)}-\mu)^T\Sigma^{-1}(x^{(n)}-\mu)
+$$
+
+Given that the summands are scalar, we can take the trace of the summands and use the properties of the trace, so that when we take the expectation conditional on the observed data, we get 
+$$
+Q((\mu,\Sigma);(\mu_{l-1},\Sigma_{l-1}))\equiv -N/2 \log(\det(\Sigma)) +\frac{1}{2}\sum_{n=1}^N tr\left\{\mathbb{E}_{(\mu_{l-1},\Sigma_{l-1})}\left[(X^{(n)}-\mu)(X^{(n)}-\mu)^T|x_{\text{obs}}\right]\Sigma^{-1}\right\}
+$$ 
+
+# eq-Estep
+
+We denote $x^{(n)(l)}=\mathbb{E}_{(\mu_{l},\Sigma_{l})}\left[ X^{(n)}|x_{\text{obs}} \right]$. It's a classical result that if we have a multivariate Gaussian $Z=(Z_1,Z_2)$, with mean $\begin{pmatrix}\mu_1\\\mu_2 \end{pmatrix}$ and covariance $\begin{pmatrix} \Sigma_{11}&&\Sigma_{12} \\ \Sigma_{21}&&\Sigma_{22} \end{pmatrix}$, then $Z_2|Z_1=z_1$ is a random variable with a $N(\mu_2+\Sigma_{21}\Sigma_{11}^{-1}(z_1-\mu_1),\Sigma_{2.1})$ distribution, where $\Sigma_{2.1}=\Sigma_{22}-\Sigma_{21}\Sigma_{11}^{-1}\Sigma_{12}$.
+
+Hence we know the distribution of $\hat{X}^{(n)(l)}$ and can calculate its mean $\hat{x}^{(n)(l)}$.
+
+We can then write 
+$$
+\begin{aligned}
+(X^{(n)}-\mu)(X^{(n)}-\mu)^T &= \left((X^{(n)}-\hat{x}^{(n)(l)})+(\hat{x}^{(n)(l)}-\mu)\right)\left((X^{(n)}-\hat{x}^{(n)(l)})+(\hat{x}^{(n)(l)}-\mu)\right)^T \\
+&= (X^{(n)}-\hat{x}^{(n)(l)})(X^{(n)}-\hat{x}^{(n)(l)})^T+(\hat{x}^{(n)(l)}-\mu)(\hat{x}^{(n)(l)}-\mu)^T \\
+&\quad+(X^{(n)}-\hat{x}^{(n)(l)})(\hat{x}^{(n)(l)}-\mu)^T+(\hat{x}^{(n)(l)}-\mu)(X^{(n)}-\hat{x}^{(n)(l)})^T
+\end{aligned}
+$$
+
+
+Finally, taking the conditional expectation we obtain (as in the expression for Q, so with $l-1$) 
+
+
+$$
+\mathbb{E}_{(\mu_{l-1},\Sigma_{l-1})}\left[(X^{(n)}-\mu)(X^{(n)}-\mu)^T|x_{\text{obs}}\right] \\
+= \mathbb{E}_{(\mu_{l-1},\Sigma_{l-1})}\left[(X^{(n)}-x^{(n)(l-1)})(X^{(n)}-x^{(n)(l-1)})^T|x_{\text{obs}}\right] + (x^{(n)(l-1)}-\mu)(x^{(n)(l-1)}-\mu)^T
+$$
+
+
+Note that the first term is the conditional covariance of $X^{(n)}$ given $x_{\text{obs}}$. Let's denote this matrix $C^{(n)(l)}$.
+
+
+We can write
+
+(modified to be better visually when rendered)
+$$
+Q((\mu,\Sigma);(\mu_{l-1},\Sigma_{l-1})) \equiv \underbrace{-\frac{N}{2} \log(\det(\Sigma)) + \frac{1}{2}\sum_{n=1}^N \text{tr}\left\{(x^{(n)(l-1)}-\mu)(x^{(n)(l-1)}-\mu)^T \Sigma^{-1}\right\}}_{(1)} \\
++ \underbrace{\frac{1}{2}\sum_{n=1}^N \text{tr}\left\{C^{(n)(l-1)}\Sigma^{-1}\right\}}_{(2)}
+$$
+
+
+We recognize the first term as a regular Gaussian loglikelihood. The second does not depend on $\mu$. We know that the $\mu$ which maximizes $(1)$ (and hence $(1)+(2)$) doesn't depend on $\Sigma$, and is given by $\mu^{(l)}=\frac{1}{N}\sum_{n=1}^N(x^{(n)(l-1)})^T$. Therefore this remains the correct maximizer of this expression. To find $\arg\max\Sigma$, we use the property (which is not difficult to show) $\frac{\partial}{\partial A}tr(AB)=B^T$. We also use the fact that $\frac{\partial \det(A)}{\partial A}=\det (A)A$. Differentiating with respect to $\Sigma$, we hence obtain $$-\frac{N}{2} \Sigma+\frac{1}{2}\sum_{n=1}^N(x^{(n)(l-1)}-\mu)(x^{(n)(l-1)}-\mu)^T+\frac{1}{2}\sum_{n=1}^N C^{(n)(l-1)}$$. Setting the derivative to zero, we obtain the update rule for $\Sigma$: $$\Sigma^{(l)}=\frac{1}{N}\sum_{n=1}^N(\hat{x}^{(n)(l-1)}-\mu)(\hat{x}^{(n)(l-1)}-\mu)^T+ C^{(n)(l-1)}$$ is the matrix which maximizes $Q((\mu,\Sigma);(\mu_{l-1},\Sigma_{l-1}))$.
+
+So to resume, an iteration is as follows:
+
+1.  Starting from current estimates $\mu^{(l-1)}$ and $\Sigma^{(l-1)}$, calculate $x^{(n)(l-1)}=\mathbb{E}_{(\mu_{l-1},\Sigma_{l-1})}\left[ X^{(n)}|x_{\text{obs}} \right]$.
+
+2.  Use this vector to calculate the updated parameter estimates $\mu^{(l)}$ and $\Sigma^{(l)}$ according to the formulas above.
+
+We remark that this is $\textit{not}$ the same as imputing the values of $\hat{x}^{(n)(l-1)}$ into the corresponding missing values of the data matrix and then taking the MLEs of the complete Gaussian (empirical mean and covariance) to update the parameters. However, we $\textit{do}$ need to calculate $\hat{x}^{(n)(l-1)}$ at each iteration. This implies that, as a by-product of the algorithm, at the final iteration of the algorithm, we obtain $\hat{x}^{(n)(L-1)}$, which is a good estimate of the missing values of the data matrix. In this sense, the EM algorithm can also be used for imputation, not just parameter estimation. How well the algorithm imputes the data is also basically simply another measure of how well it has estimated the parameters.
+
+## Analyzing the suitability of the EM algorithm for parameter inference in the multivariate Gaussian setting.
+
+### Different patterns of missingness
+
+----- Charles can explain the different patterns of missingness here, and potentially include explanations of the functions insofar as he sees fit. ------
+
+### First results
+
+We started by simulating data from a 5-dimensional Gaussian with random $N(0,10\cdot I_5)$ mean. We also randomly generated a matrix A with random entries from $N(0,1)$ and then took the true covariance matrix we simulated the data from to be $A^T A$. The goal is to recover the true mean and covariance matrix from the data. We then randomly removed a certain percentage of the data according to a certain pattern of missingness, using functions from an external library for this purpose, as explained above. For each of these different missing data mechanisms, we analyzed the results.
+
+We wanted to compare the results of the EM algorithm with other ways of handling missing data. As such, we will compare it to median, KNN and Iterative imputer.
+
+In the realm of data imputation, median imputation stands out for its simplicity, particularly in scenarios where the data distribution is not symmetric. This method involves replacing missing values in a dataset with the median of the observed (non-missing) values within the same feature. The rationale behind this approach is grounded in the statistical properties of the median as a measure of central tendency, which, unlike the mean, is not skewed by outliers. Therefore, in distributions that are not symmetrical or when outliers are present, the median provides a more robust estimate of the central location of the data.
+
+Mathematically, suppose we have a dataset with features $X = \{x_1, x_2, ..., x_n\}$ and a particular feature $X_j$ contains missing values. The process of median imputation can be described as follows. First, for the feature $X_j$, we calculate the median of the non-missing values. This median is given by $\text{Median}(X_j) = \text{median}(\{x_{1j}, x_{2j}, ..., x_{nj}\})$, where the median function sorts the observed values and selects the middle one (or the average of the two middle values in case of an even number of observations). Then, each missing value in $X_j$ is replaced by this calculated median. Thus, if $x_{ij}$ is a missing value in $X_j$, it is imputed as $x_{ij} = \text{Median}(X_j)$.
+
+The simplicity of median imputation lies in its non-parametric nature – it doesn't assume an underlying distribution for the data. However, this simplicity comes at the cost of certain limitations. Most notably, median imputation treats each feature independently and does not account for potential correlations between different features. This independent treatment might not be ideal in datasets where variables are interrelated. Additionally, applying median imputation extensively, especially in cases with a significant amount of missing data, can lead to an underestimation of the variability in the data and may result in biased estimates. Despite these limitations, median imputation remains a popular choice in preliminary data cleaning and exploratory data analysis, especially when dealing with non-normally distributed data or data with outliers.
+
+
+K-Nearest Neighbors (KNN) Imputation [@10.1093/bioinformatics/17.6.520] is a method employed in statistics and data science to impute missing values in datasets. This non-parametric technique assumes that the dataset contains similar data points, and these similarities can be leveraged to estimate missing values.
+
+The KNN imputation method operates on the principle that the missing values of a data point can be inferred from the 'k' nearest points in the feature space. These nearest neighbors are determined based on the non-missing features of the data point in question. The method uses distance metrics to ascertain the closeness of data points. Commonly used distance metrics in KNN are:
+
+1. **Euclidean Distance**: Defined as the square root of the sum of squared differences between two points in an m-dimensional space, given by the formula:
+   $d(\mathbf{x}_i, \mathbf{x}_j) = \sqrt{\sum_{k=1}^{m}(x_{ik} - x_{jk})^2}$
+2. **Manhattan Distance**: Calculated as the sum of the absolute differences of their coordinates, expressed as:
+   $d(\mathbf{x}_i, \mathbf{x}_j) = \sum_{k=1}^{m}|x_{ik} - x_{jk}|$
+3. **Minkowski Distance**: A generalized form of distance, which becomes Euclidean or Manhattan distance for specific parameter values, represented as:
+   $d(\mathbf{x}_i, \mathbf{x}_j) = \left( \sum_{k=1}^{m}|x_{ik} - x_{jk}|^p \right)^{\frac{1}{p}}$
+
+The procedure for KNN imputation includes normalization of the data to ensure uniform contribution of each feature to the distance calculations. For an observation with missing values, the algorithm computes distances to other data points considering only the non-missing features. It then identifies the 'k' nearest neighbors based on these distances. The missing values are imputed using a statistical measure (like mean or median) derived from the values of these neighbors.
+
+While KNN imputation is versatile and adaptable to the data's structure, it has its limitations. The method can be computationally intensive for large datasets, and its performance is sensitive to outliers. The choice of 'k' is critical and can significantly influence the imputation's accuracy. In high-dimensional spaces, proximity may become less meaningful, a problem known as the curse of dimensionality.
+
+KNN imputation is particularly useful in scenarios where the data's underlying structure does not conform to linear assumptions, making it a valuable tool for handling missing data in diverse datasets.
+
+Iterative Imputation in Scikit-learn, an implementation of the Multiple Imputation by Chained Equations (MICE) algorithm [@JSSv045i03], is a sophisticated technique for handling missing data in datasets. This approach is particularly effective when dealing with data that are not Missing Completely At Random (MCAR) but rather Missing At Random (MAR) or Missing Not At Random (MNAR).
+
+The fundamental concept of Iterative Imputation revolves around modeling each feature with missing values as a dependent variable in a regression framework. The algorithm initially fills in missing values using simple imputation methods such as mean, median, or mode. This initial imputation creates a complete but approximate dataset. The algorithm then refines these imputations iteratively, treating each feature with missing data as a dependent variable in a regression model. The other features in the dataset act as independent variables or predictors in this model.
+
+Mathematically, the iterative process can be described as follows: 
+
+1. **Initial Imputation**: Missing values in the dataset are imputed using a simple method (e.g., mean, median), we used median imputation in our code. This step results in a complete dataset, denoted as $ X^{(0)} $.
+
+2. **Iterative Process**: For each feature $ X_j $ with missing values, the algorithm performs the following steps:
+   - Treat $ X_j $ as a dependent variable and other features $ X_{-j} $ as independent variables.
+   - Build a regression model using $ X_{-j} $ to predict $ X_j $.
+   - Update the imputed values of $ X_j $ in the dataset using the model's predictions.
+
+3. **Repeat**: This process is repeated, cycling through all features with missing values multiple times.
+
+Each iteration refines the imputations based on the relationships learned from the regression models. The regression models can vary: linear regression is commonly used for continuous data, while logistic regression or other classification models are utilized for categorical data. The choice of regression model significantly influences the imputation quality. We used the default Baysian rifge regression for our code.
+
+In Scikit-learn's Iterative Imputer, flexibility is provided in terms of the regression estimator (e.g., `BayesianRidge`, `DecisionTreeRegressor`), maximum number of imputation rounds (`Max Iter`), and convergence criterion (`Tolerance`). The iteration continues until either the change in imputed values across iterations falls below the specified tolerance level or the maximum number of iterations is reached.
+
+This approach is especially powerful in scenarios where the dataset features complex relationships among variables. Its effectiveness, however, is highly dependent on the appropriate selection of regression models and the careful handling of convergence criteria. Despite being computationally demanding, Iterative Imputer is a valuable tool when simple imputation methods might not be sufficient.
+
+
+
+|                                                             |
+|-------------------------------------------------------------|
+| George can potentially do a better explanation of mice here |
+
+The first measure we used to compare these different imputation (and hence inference) methods was the Relative Mean Squared Error (rMSE) (not to be confused with Root Mean Square Error, the square root of the MSE, hence we denote it rMSE and not RMSE) the imputed data matrix as compared to the true data matrix (we have access to the true data matrix since we first simulated it and then removed values). This does not directly compare the estimated mean and covariance with the true mean and covariance, but as stated above it is a good proxy as we expect the imputation of the EM algorithm to be good exactly when its inference was good, and because the quality of the inference of the imputation methods depends directly on how good their imputation is. We can than also look at the accuracy of our estimates directly. 
+
+First, we simulate some true data. We then remove varying percentages of the data according to a certain mechanism, and calculate the rMSE of the imputed data, mean, and covariance for that percentage of missingness. 
+
+For the mean, for example, denoting $\mu$ the true mean, we calculate 
+
+$$
+rMSE=
+\frac{1/n\sum (\hat{\mu}_i-\mu_i)^2}{1/n\sum\mu_i^2}
+=\frac{\Vert \hat{\mu}-\mu \Vert^2}{\Vert \mu \Vert^2}
+$$
+
+and the same for the imputed data and covariance with the Frobenius matrix norm.
+
+```{python}
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.stats import multivariate_normal
+from sklearn.metrics import mean_squared_error
+import torch
+#from produce_NA import *
+import importlib
+
+
+import visualization as vis
+import data_generation as gen
+
+import produce_NA as NA
+```
+
+```{python}
+
+np.random.seed(123)
+#generate synthetic data with this covariance
+data,true_mean,true_cov=gen.generate_synthetic_data(n_samples=1000,n_features=10)
+
+
+```
+
+|            |
+|------------|
+| Graph MCAR |
+
+|           |
+|-----------|
+| Graph MAR |
+
+|            |
+|------------|
+| Graph MNAR |
+|            |
+
+```{python}
+vis.plot_all_differences_combined(data, true_mean, true_cov)
+```
+
+For Missing Completely At Random data, we see that the EM algorithm performs best, closely followed by the multiple imputation method. The KNNimputation method seem to capture some of the relationship between the features and as such usually performs better than the median imputation method, who does not capture any relationship between features. Surprisingly, however, the rMSE of the KNN method seems to perform worse than median at higher level of missing data. We also see that the performance declines as the percentage of missing data increases, but not dramatically. This is inevitable as we have less data to work with.
+
+For Missing At Random data, we see that the performance of the EM algorithm is very similar to the graph above. This shows that the EM algorithm can indeed deal with MAR data. We also notice that the Median imputation seem to perform significantly worse in the rMSE of the mean compared to MCAR data and that the rMSE of the mean for the Iterative method perfomrs worse than KNN at higher level of data missingness, probably due to the fact that the method stopped by reaching the maximum iteration insead of converging.
+
+While the comparative performance of the different imputation methods do not change much for Missing Not At Random data compared to MAR, the performance of all the methods are worse, especially when looking at rMSE of the mean. This is as expected, because no method can reliably perform inference on MNAR without somehow correctly modeling the mechanism which produces the missingness.
+
+## The impact of different types of covariance matrices on the EM algorithm
+
+To analyze further the situations in which the EM algorithm performs well or not so well, we repeated this analysis for different types of covariance matrices. The idea is that what the EM algorithm is particularly good at is estimating the covariance matrix, and correctly imputing the data in a Gaussian setting, while for example the MICE method is more general, but potentially less adept in the Gaussian setting at doing this.
+
+For this we generated two types of covariance matrix. First, we generated a "sparse" 5x5 covariance matrix, ie which contained an important proportion of zeros. Such a matrix was generated by creating a lower triangular cholesky factor, with lower triangular entries that were either random or had a certain probability of being zero, and then doing the cross-product to obtain the covariance.
+
+```{python}
+
+
+
+np.random.seed(123)
+# generate a covariance matrix with more or less zeros
+sparse_cov=gen.generate_sparse_covariance(10)
+
+np.random.seed(123)
+#generate synthetic data with this covariance
+sparse_data,sparse_mean,sparse_cov=gen.generate_synthetic_data(n_samples=1000,n_features=10,cov=sparse_cov)
+
+```
+
+This does not seem true in general
+(In these cases, we see that the EM algorithm does not enjoy the clear performance advantage it did previously. In general, all the methods we compared perform similarly. This is not too surprising: indeed, consider the most extreme "sparse" covariance: a diagonal matrix. In this case, the components of the Gaussian random vector are independent, and so the MLE for the mean of the i-th component is simply the sample mean of the i-th column of the data matrix. The best prediction we can make for a missing entry in the data matrix is then the mean of its column, ie the mean imputation method, which is indistinguishable from median imputation in the Gaussian setting with a decent amount of data. Hence in this case, we expect median imputation to perform well or even best, (and it does, although we have not included the graph here). In theory, the EM algorithm should also be able to do the same thing as median imputation, but as it also has to estimate the covariance matrix and inevitably will make a bit of error there, it can actually be worse.
+For MNAR data with a high percentage of missing data, we see for the first time that EM performs worse than the other methods.)
+
+```{python}
+vis.plot_all_differences_combined(sparse_data, sparse_mean, sparse_cov)
+```
+
+Secondly, we wanted to analyze the performance of the EM algorithm for highly correlated multivariate Gaussian data. For this, we used a very specific type of correlation matrix.
+Suppose you have a 2D grid of points, and each point is assigned a value from a multivariate distribution. For example, a 3x3 grid corresponds to a multivariate-9 Gaussian distribution. The correlation of points is determined by their euclidean distance. We set the correlation to $\exp\left(\frac{\Vert x_i-x_j\Vert}{h} \right)$ with $h=1.5$. The resulting multivariate normal is very correlated. 
+
+```{python}
+
+
+
+np.random.seed(123)
+# generate a covariance matrix with more or less zeros
+corr_cov=gen.generate_2Dgrid_correlation(3)
+
+np.random.seed(123)
+#generate synthetic data with this covariance
+corr_data,corr_mean,corr_cov=gen.generate_synthetic_data(n_samples=1000,n_features=9,cov=corr_cov)
+
+```
+
+```{python}
+vis.plot_all_differences_combined(corr_data, corr_mean, corr_cov)
+```
+
+----
+It would seem that in this situation, the adventage of the EM algorithm is not as clear as in the other cases. Apart from Median imputation that performs pretty badly for rMSE of mean and covariance, the performance of the rest of the methods seem closer than in the previous two situation. This is especially true for the rMSE of the imputed data, where all method seem to perfom at the same level.
+----
+
+This does not seem to be true.
+(For this type of covariance, the EM algorithm had the clearest advantage yet over the other methods, for all missing data mechanisms.)
+
+
+
+## The impact of distributional assumptions on the EM algorithm
+
+One major weakness the EM algorithm has compared to the other methods is that it is distribution-specific. Our implementation was for Gaussian data, but median imputation or MICE imputation works for any type of data. We wanted to see how the EM algorithm woud perform under a misspecified distribution. For this we used the wine data ----insert details about dataset here----, in which the data has a clear non-Gaussian distribution, but we wanted to see how the algorithm would perform if we assumed it was Gaussian and applied the algorithm anyway.
+
+----
+Insert Graph(s)
+----
+----
+Insert Graph(s)
+----
+
+We see that the EM algorithm is clearly inferior to MICE, for example. This is a major advantage of using MICE imputation and then doing inference; it is robust to misspecification.
+
+
+
+
+
+## Appendix
+
+Stuff from copilot:
+
+The k-means approach clusters the data into k clusters, and then takes the average of the values of the complete observations in the same cluster as the missing observation. We also compared to the EM algorithm, which we will refer to as the "EM imputation" method. We also compared to the "hot deck" method, which is a method which is used in practice for imputation. It is a deterministic method which replaces missing values with values from other observations which are similar to the observation with the missing value. We used the "hot deck" method from the R package "mice". We also compared to the "softImpute" method, which is a method which uses a low-rank approximation of the data matrix to impute the missing values. We used the "softImpute" method from the R package "softImpute". We also compared to the "amelia" method, which is a method which uses a bootstrapping approach to impute the missing values. We used the "amelia" method from the R package "Amelia". We also compared to the "missForest" method, which is a method which uses a random forest approach to impute the missing values. We used the "missForest" method from the R package "missForest". We also compared to the "knn" method, which is a method which uses a k-nearest neighbors approach to impute the missing values. We used the "knn" method from the R package "DMwR". We also compared to the "mice" method, which is a method which uses a multivariate imputation by chained equations approach to impute the missing values. We used the "mice" method from the R package "mice". We also compared to the "VIM" method, which is a method which uses a variable importance in the projection approach to impute the missing values. We used the "VIM" method from the R package "VIM". We also compared to the "mi" method, which is a method which uses a multiple imputation approach to impute the missing values. We used the "mi" method from the R package "mi". We also compared to the "norm" method, which is a method which uses a normal model approach to impute the missing values. We used the "norm" method from the R package "norm". We also compared to the "pmm" method, which

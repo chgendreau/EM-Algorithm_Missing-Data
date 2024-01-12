@@ -1,0 +1,26 @@
+src/.quarto
+src/_extensions
+*.DS_Store
+*.tex
+
+# .gitignore
+
+# Python
+__pycache__/
+venv/
+/venv/
+*.pyc
+# Ignore all virtual environment directories
+**/venv/
+**/*_env/
+
+#Ignore PyCharm files
+.idea/
+
+# R
+src/renv/
+renv/
+/renv/
+
+# Other project-specific directories or files
+/.quarto/
